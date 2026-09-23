@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.decoration import DecorationRead
 from app.schemas.sticker import StickerRead
 from app.schemas.voice_note import VoiceNoteRead
 
@@ -14,6 +15,9 @@ class EntryCreate(BaseModel):
     weather: str | None = Field(default=None, max_length=100)
     song: str | None = Field(default=None, max_length=200)
     song_url: str | None = Field(default=None, max_length=500)
+    # Optional: seals the whole entry (own content included) until this
+    # moment — a time capsule built into a regular memory.
+    unlock_at: datetime | None = None
 
 
 class EntryCommentCreate(BaseModel):
@@ -49,7 +53,11 @@ class EntryRead(BaseModel):
     """Shapes the blind-drop rule: the partner's comment/photos are withheld
     until both partners have left their own comment for this entry.
     `partner_has_commented` is exposed pre-reveal only as a boolean (never
-    the text itself) so the UI can show a sealed/blurred teaser card."""
+    the text itself) so the UI can show a sealed/blurred teaser card.
+
+    When `is_time_locked` is true (an `unlock_at` in the future, or not yet
+    broken past that point), everything below is withheld — even the
+    author's own content — until POST /break-seal succeeds."""
 
     id: uuid.UUID
     entry_date: date
@@ -59,6 +67,8 @@ class EntryRead(BaseModel):
     song: str | None
     song_url: str | None
     created_at: datetime
+    unlock_at: datetime | None
+    is_time_locked: bool
     is_unlocked: bool
     is_favorite: bool
     partner_has_commented: bool
@@ -68,3 +78,4 @@ class EntryRead(BaseModel):
     partner_photos: list[PhotoRead]
     my_voice_notes: list[VoiceNoteRead]
     partner_voice_notes: list[VoiceNoteRead]
+    decorations: list[DecorationRead]

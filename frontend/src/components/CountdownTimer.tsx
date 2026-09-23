@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 
 function timeLeft(target: string) {
-  const diff = Math.max(0, new Date(target + "T00:00:00").getTime() - Date.now());
+  // Accepts either a plain date ("YYYY-MM-DD", used by capsules) or a full
+  // ISO datetime (used by time-sealed entries).
+  const targetMs = target.includes("T") ? new Date(target).getTime() : new Date(target + "T00:00:00").getTime();
+  const diff = Math.max(0, targetMs - Date.now());
   const days = Math.floor(diff / 86_400_000);
   const hours = Math.floor((diff % 86_400_000) / 3_600_000);
   const minutes = Math.floor((diff % 3_600_000) / 60_000);

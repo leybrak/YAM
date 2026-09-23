@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_linked_user, get_db
 from app.models.couple import Couple
+from app.models.decoration import EntryDecoration
 from app.models.entry import Entry
 from app.models.favorite import Favorite
 from app.models.photo import EntryPhoto
 from app.models.user import User
 from app.models.voice_note import EntryVoiceNote
+from app.schemas.decoration import DecorationCreate, DecorationRead
 from app.schemas.entry import (
     CommentRead,
     EntryCommentCreate,
@@ -33,6 +35,7 @@ def _entry_query():
         selectinload(Entry.comments),
         selectinload(Entry.photos).selectinload(EntryPhoto.stickers),
         selectinload(Entry.voice_notes),
+        selectinload(Entry.decorations),
     )
 
 
@@ -43,11 +46,47 @@ def _get_entry_or_404(db: Session, couple_id: uuid.UUID, entry_id: uuid.UUID) ->
     return entry
 
 
+def _ensure_not_time_locked(entry: Entry) -> None:
+    if entry.unlock_at is not None and entry.sealed_opened_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Esta entrada todavía está sellada"
+        )
+
+
 def _shape_entry(entry: Entry, user: User, db: Session) -> EntryRead:
     """Applies the blind-drop rule: the partner's comment, photos and voice
     notes stay hidden until the current user has also left their own
     comment. `partner_has_commented` is a bare boolean (no content) so the
-    UI can show a sealed/blurred teaser before that."""
+    UI can show a sealed/blurred teaser before that.
+
+    Independently, `is_time_locked` (an `unlock_at` not yet broken via
+    /break-seal) hides EVERYTHING — even the author's own content — turning
+    the whole entry into a time capsule."""
+    is_time_locked = entry.unlock_at is not None and entry.sealed_opened_at is None
+    if is_time_locked:
+        return EntryRead(
+            id=entry.id,
+            entry_date=entry.entry_date,
+            title=entry.title,
+            location_name=entry.location_name,
+            weather=entry.weather,
+            song=entry.song,
+            song_url=entry.song_url,
+            created_at=entry.created_at,
+            unlock_at=entry.unlock_at,
+            is_time_locked=True,
+            is_unlocked=False,
+            is_favorite=False,
+            partner_has_commented=False,
+            my_comment=None,
+            partner_comment=None,
+            my_photos=[],
+            partner_photos=[],
+            my_voice_notes=[],
+            partner_voice_notes=[],
+            decorations=[],
+        )
+
     unlocked = entry.is_unlocked
     my_comment = next((c for c in entry.comments if c.user_id == user.id), None)
     partner_comment = next((c for c in entry.comments if c.user_id != user.id), None)
@@ -94,6 +133,8 @@ def _shape_entry(entry: Entry, user: User, db: Session) -> EntryRead:
         song=entry.song,
         song_url=entry.song_url,
         created_at=entry.created_at,
+        unlock_at=entry.unlock_at,
+        is_time_locked=False,
         is_unlocked=unlocked,
         is_favorite=is_favorite,
         partner_has_commented=partner_comment is not None,
@@ -109,6 +150,7 @@ def _shape_entry(entry: Entry, user: User, db: Session) -> EntryRead:
         partner_voice_notes=(
             [to_voice_note_read(v) for v in partner_voice_notes] if reveal_partner else []
         ),
+        decorations=[DecorationRead.model_validate(d) for d in entry.decorations],
     )
 
 
@@ -162,9 +204,14 @@ def anniversary_summary(
         ).all()
     )
 
-    total_photos = sum(len(e.photos) for e in entries)
+    def is_sealed(e: Entry) -> bool:
+        return e.unlock_at is not None and e.sealed_opened_at is None
 
-    highlights = [e for e in entries if e.is_unlocked and e.id in favorite_entry_ids]
+    total_photos = sum(len(e.photos) for e in entries if not is_sealed(e))
+
+    highlights = [
+        e for e in entries if e.is_unlocked and e.id in favorite_entry_ids and not is_sealed(e)
+    ]
 
     return AnniversarySummary(
         days_together=days_together,
@@ -191,6 +238,7 @@ def add_comment(
     db: Session = Depends(get_db),
 ) -> EntryRead:
     entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    _ensure_not_time_locked(entry)
     existing = next((c for c in entry.comments if c.user_id == user.id), None)
     if existing is not None:
         raise HTTPException(
@@ -258,6 +306,7 @@ def register_photo(
     db: Session = Depends(get_db),
 ) -> EntryRead:
     entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    _ensure_not_time_locked(entry)
 
     db.add(
         EntryPhoto(
@@ -288,6 +337,7 @@ def add_sticker(
     if payload.sticker_type not in STICKER_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sticker inválido")
     entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    _ensure_not_time_locked(entry)
     photo = next((p for p in entry.photos if p.id == photo_id), None)
     if photo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Foto no encontrada")
@@ -353,6 +403,7 @@ def register_voice_note(
     db: Session = Depends(get_db),
 ) -> EntryRead:
     entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    _ensure_not_time_locked(entry)
     db.add(
         EntryVoiceNote(
             entry_id=entry.id,
@@ -361,6 +412,69 @@ def register_voice_note(
             duration_seconds=payload.duration_seconds,
         )
     )
+    db.commit()
+    db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.put("/{entry_id}/break-seal", response_model=EntryRead)
+def break_seal(
+    entry_id: uuid.UUID, user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> EntryRead:
+    """Deliberately opens a time-sealed entry once its unlock_at has
+    passed — mirrors TimeCapsule's mark_opened, so the frontend can play a
+    one-time seal-break animation before the real content is fetched."""
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    if entry.unlock_at is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta entrada no tiene sello")
+    if entry.unlock_at > datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Todavía no se puede abrir")
+    if entry.sealed_opened_at is None:
+        entry.sealed_opened_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.post(
+    "/{entry_id}/decorations", response_model=EntryRead, status_code=status.HTTP_201_CREATED
+)
+def add_decoration(
+    entry_id: uuid.UUID,
+    payload: DecorationCreate,
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+) -> EntryRead:
+    if payload.sticker_type not in STICKER_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sticker inválido")
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    _ensure_not_time_locked(entry)
+    db.add(
+        EntryDecoration(
+            entry_id=entry.id,
+            sticker_type=payload.sticker_type,
+            x=payload.x,
+            y=payload.y,
+            rotation=payload.rotation,
+        )
+    )
+    db.commit()
+    db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.delete("/{entry_id}/decorations/{decoration_id}", response_model=EntryRead)
+def remove_decoration(
+    entry_id: uuid.UUID,
+    decoration_id: uuid.UUID,
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+) -> EntryRead:
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    decoration = next((d for d in entry.decorations if d.id == decoration_id), None)
+    if decoration is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sticker no encontrado")
+    db.delete(decoration)
     db.commit()
     db.refresh(entry)
     return _shape_entry(entry, user, db)

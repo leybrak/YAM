@@ -1,21 +1,15 @@
 import { useRef } from "react";
 import { gsap } from "gsap";
 import type { Photo, StickerType } from "../api/types";
+import { STICKER_EMOJI } from "./StickerBar";
 
-const STICKER_EMOJI: Record<StickerType, string> = {
-  heart: "❤️",
-  coffee: "☕",
-  star: "⭐",
-  ticket: "🎫",
-};
-
-/** Deterministic pseudo-random rotation in [-range, range] derived from the
- * photo id, so it stays the same across re-renders instead of flickering. */
-function organicRotation(seed: string, range = 2.5) {
+/** Deterministic pseudo-random rotation in [-4, 3] degrees derived from a
+ * stable id, so it stays the same across re-renders instead of flickering. */
+export function organicRotation(seed: string, min = -4, max = 3) {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
   const normalized = (Math.abs(hash) % 1000) / 1000;
-  return normalized * range * 2 - range;
+  return min + normalized * (max - min);
 }
 
 export function Polaroid({
@@ -41,13 +35,14 @@ export function Polaroid({
     if (!heartRef.current) return;
     gsap.fromTo(
       heartRef.current,
-      { scale: 0.6, opacity: 1 },
-      { scale: 1.4, opacity: 0, duration: 0.7, ease: "power1.out" }
+      { scale: 0.5, opacity: 1, y: 0 },
+      { scale: 1.5, opacity: 0, y: -30, duration: 0.8, ease: "power1.out" }
     );
   }
 
   function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!armedSticker || !onPlaceSticker) return;
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -95,7 +90,10 @@ export function Polaroid({
         </span>
       </div>
       {(photo.caption || captionFallback) && (
-        <figcaption className="text-xs mt-2 text-center" style={{ fontFamily: "var(--font-hand)" }}>
+        <figcaption
+          className="text-sm mt-2 text-center"
+          style={{ fontFamily: "var(--font-hand-note)", color: "var(--color-ink)" }}
+        >
           {photo.caption ?? captionFallback}
         </figcaption>
       )}

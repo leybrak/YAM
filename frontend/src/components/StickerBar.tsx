@@ -4,8 +4,12 @@ const STICKERS: { type: StickerType; emoji: string; label: string }[] = [
   { type: "heart", emoji: "❤️", label: "Corazón" },
   { type: "coffee", emoji: "☕", label: "Café" },
   { type: "star", emoji: "⭐", label: "Estrella" },
-  { type: "ticket", emoji: "🎫", label: "Ticket" },
+  { type: "pin", emoji: "📌", label: "Chincheta" },
 ];
+
+export const STICKER_EMOJI: Record<StickerType, string> = Object.fromEntries(
+  STICKERS.map((s) => [s.type, s.emoji])
+) as Record<StickerType, string>;
 
 export function StickerBar({
   armed,
@@ -15,7 +19,10 @@ export function StickerBar({
   onArm: (type: StickerType | null) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap mb-3">
+    <div
+      className="inline-flex items-center gap-2 flex-wrap mb-4 px-3 py-2 rounded-full"
+      style={{ background: "#fbf6ec", boxShadow: "0 6px 14px rgba(0,0,0,0.25)" }}
+    >
       <span className="text-xs" style={{ color: "var(--color-ink-soft)" }}>
         Stickers:
       </span>
@@ -36,7 +43,7 @@ export function StickerBar({
       ))}
       {armed && (
         <span className="text-xs" style={{ color: "var(--color-ink-soft)" }}>
-          Tocá una foto para estamparlo · tocá el sticker para borrarlo
+          Tocá una foto o la hoja para estamparlo · tocá el sticker para borrarlo
         </span>
       )}
     </div>

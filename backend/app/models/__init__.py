@@ -1,6 +1,7 @@
 from app.models.capsule import TimeCapsule
 from app.models.comment import EntryComment
 from app.models.couple import Couple
+from app.models.decoration import EntryDecoration
 from app.models.entry import Entry
 from app.models.favorite import Favorite
 from app.models.notification import Notification
@@ -20,4 +21,5 @@ __all__ = [
     "Notification",
     "PhotoSticker",
     "EntryVoiceNote",
+    "EntryDecoration",
 ]

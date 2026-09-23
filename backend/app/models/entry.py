@@ -1,7 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Date, ForeignKey, String
+from sqlalchemy import Date, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,11 @@ class Entry(UUIDPKMixin, TimestampMixin, Base):
     weather: Mapped[str | None] = mapped_column(String(100), nullable=True)
     song: Mapped[str | None] = mapped_column(String(200), nullable=True)
     song_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Optional time-capsule seal on the entry itself: while set and not yet
+    # broken, ALL content (even the author's own) stays hidden — see
+    # Entry.is_time_locked and the /break-seal endpoint.
+    unlock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sealed_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     photos: Mapped[list["EntryPhoto"]] = relationship(  # noqa: F821
         "EntryPhoto", back_populates="entry", cascade="all, delete-orphan"
@@ -30,6 +35,9 @@ class Entry(UUIDPKMixin, TimestampMixin, Base):
     )
     voice_notes: Mapped[list["EntryVoiceNote"]] = relationship(  # noqa: F821
         "EntryVoiceNote", back_populates="entry", cascade="all, delete-orphan"
+    )
+    decorations: Mapped[list["EntryDecoration"]] = relationship(  # noqa: F821
+        "EntryDecoration", back_populates="entry", cascade="all, delete-orphan"
     )
 
     @property

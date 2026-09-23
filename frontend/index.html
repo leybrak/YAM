@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>YAM</title>
+    <script>
+      // Loaded after `load` fires so a slow/unreachable font CDN can never
+      // hold up the app's initial render — falls back to the cursive/serif
+      // system fonts in index.css until (if ever) it resolves.
+      window.addEventListener("load", function () {
+        var link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href =
+          "https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap";
+        document.head.appendChild(link);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

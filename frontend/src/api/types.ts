@@ -23,7 +23,7 @@ export interface Comment {
   created_at: string;
 }
 
-export type StickerType = "heart" | "coffee" | "star" | "ticket";
+export type StickerType = "heart" | "coffee" | "star" | "pin";
 
 export interface Sticker {
   id: string;
@@ -61,6 +61,8 @@ export interface Entry {
   song: string | null;
   song_url: string | null;
   created_at: string;
+  unlock_at: string | null;
+  is_time_locked: boolean;
   is_unlocked: boolean;
   is_favorite: boolean;
   partner_has_commented: boolean;
@@ -70,6 +72,7 @@ export interface Entry {
   partner_photos: Photo[];
   my_voice_notes: VoiceNote[];
   partner_voice_notes: VoiceNote[];
+  decorations: Sticker[];
 }
 
 export type NotificationType = "entry_unlocked";

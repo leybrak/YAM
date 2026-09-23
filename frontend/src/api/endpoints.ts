@@ -58,8 +58,27 @@ export async function createEntry(payload: {
   weather?: string;
   song?: string;
   song_url?: string;
+  unlock_at?: string;
 }) {
   const { data } = await api.post<Entry>("/api/entries", payload);
+  return data;
+}
+
+export async function breakEntrySeal(entryId: string) {
+  const { data } = await api.put<Entry>(`/api/entries/${entryId}/break-seal`);
+  return data;
+}
+
+export async function addDecoration(
+  entryId: string,
+  decoration: { sticker_type: StickerType; x: number; y: number; rotation?: number }
+) {
+  const { data } = await api.post<Entry>(`/api/entries/${entryId}/decorations`, decoration);
+  return data;
+}
+
+export async function removeDecoration(entryId: string, decorationId: string) {
+  const { data } = await api.delete<Entry>(`/api/entries/${entryId}/decorations/${decorationId}`);
   return data;
 }
 
