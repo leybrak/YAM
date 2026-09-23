@@ -209,8 +209,11 @@ def anniversary_summary(
     """Feeds the animated presentation mode: overall stats plus the unlocked
     entries either partner marked as a favorite, in chronological order."""
     couple = db.get(Couple, user.couple_id)
+    # linked_at is stored in UTC — compare against a UTC "today" too, or
+    # this drifts off by a day for part of the day in any timezone that
+    # isn't UTC itself.
     since = couple.linked_at.date() if couple and couple.linked_at else None
-    days_together = (date.today() - since).days if since else 0
+    days_together = (datetime.now(timezone.utc).date() - since).days if since else 0
 
     entries = db.scalars(
         _entry_query().where(Entry.couple_id == user.couple_id).order_by(Entry.entry_date.asc())
