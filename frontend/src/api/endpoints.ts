@@ -144,6 +144,11 @@ export async function uploadVoiceNote(entryId: string, blob: Blob, durationSecon
   return entry;
 }
 
+export async function fetchOnThisDay() {
+  const { data } = await api.get<Entry[]>("/api/entries/memories/on-this-day");
+  return data;
+}
+
 export async function fetchAnniversarySummary() {
   const { data } = await api.get<AnniversarySummary>("/api/entries/summary/anniversary");
   return data;
@@ -185,4 +190,17 @@ export async function createCapsule(payload: {
 export async function openCapsule(capsuleId: string) {
   const { data } = await api.put<Capsule>(`/api/capsules/${capsuleId}/open`);
   return data;
+}
+
+export async function fetchVapidPublicKey() {
+  const { data } = await api.get<{ public_key: string }>("/api/push/vapid-public-key");
+  return data.public_key;
+}
+
+export async function subscribePushOnServer(subscription: PushSubscriptionJSON) {
+  await api.post("/api/push/subscribe", subscription);
+}
+
+export async function unsubscribePushOnServer(endpoint: string) {
+  await api.post("/api/push/unsubscribe", { endpoint });
 }

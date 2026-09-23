@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import extract, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_linked_user, get_db
@@ -182,6 +182,26 @@ def list_entries(
     return [_shape_entry(e, user, db) for e in entries]
 
 
+@router.get("/memories/on-this-day", response_model=list[EntryRead])
+def on_this_day(
+    user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> list[EntryRead]:
+    """Entries from previous years that share today's month and day —
+    resurfaced automatically, most recent year first."""
+    today = date.today()
+    entries = db.scalars(
+        _entry_query()
+        .where(
+            Entry.couple_id == user.couple_id,
+            extract("month", Entry.entry_date) == today.month,
+            extract("day", Entry.entry_date) == today.day,
+            Entry.entry_date < today,
+        )
+        .order_by(Entry.entry_date.desc())
+    ).all()
+    return [_shape_entry(e, user, db) for e in entries]
+
+
 @router.get("/summary/anniversary", response_model=AnniversarySummary)
 def anniversary_summary(
     user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
@@ -270,16 +290,21 @@ def _notify_entry_unlocked(db: Session, entry: Entry, notify_user_id: uuid.UUID)
         return
 
     when = entry.title or entry.entry_date.strftime("%d/%m/%Y")
+    message = f"Tu pareja dejó su comentario en «{when}» y la entrada se reveló 💌"
     db.add(
         Notification(
             user_id=partner.id,
             couple_id=entry.couple_id,
             entry_id=entry.id,
             type=NotificationType.ENTRY_UNLOCKED,
-            message=f"Tu pareja dejó su comentario en «{when}» y la entrada se reveló 💌",
+            message=message,
         )
     )
     db.commit()
+
+    from app.services.push import send_push_to_user
+
+    send_push_to_user(db, partner.id, title="YAM", body=message, url=f"/album/{entry.id}")
 
 
 @router.post("/{entry_id}/photos/presign")

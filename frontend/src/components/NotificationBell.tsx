@@ -4,10 +4,13 @@ import { gsap } from "gsap";
 import {
   fetchNotifications,
   fetchUnreadNotificationCount,
+  fetchVapidPublicKey,
   markAllNotificationsRead,
   markNotificationRead,
+  subscribePushOnServer,
 } from "../api/endpoints";
 import type { Notification } from "../api/types";
+import { getExistingSubscription, isPushSupported, registerServiceWorker, subscribeToPush } from "../lib/push";
 
 const POLL_INTERVAL_MS = 20_000;
 
@@ -16,6 +19,8 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
   const badgeRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -37,6 +42,14 @@ export function NotificationBell() {
       cancelled = true;
       clearInterval(interval);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    registerServiceWorker()
+      .then(() => getExistingSubscription())
+      .then((sub) => setPushSubscribed(!!sub))
+      .catch(() => setPushSubscribed(null));
   }, []);
 
   useEffect(() => {
@@ -80,6 +93,24 @@ export function NotificationBell() {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }
 
+  async function handleEnablePush() {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return;
+      const vapidKey = await fetchVapidPublicKey();
+      if (!vapidKey) return; // backend todavía no configuró sus claves VAPID
+      const subscription = await subscribeToPush(vapidKey);
+      await subscribePushOnServer(subscription.toJSON() as PushSubscriptionJSON);
+      setPushSubscribed(true);
+    } catch {
+      // el usuario canceló el permiso, o el navegador no pudo suscribirse
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -105,7 +136,10 @@ export function NotificationBell() {
           className="absolute right-0 mt-2 w-72 rounded-lg overflow-hidden z-20"
           style={{ background: "#fffdf9", boxShadow: "0 6px 16px rgba(58, 47, 40, 0.25)" }}
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "var(--color-paper-dark)" }}>
+          <div
+            className="flex items-center justify-between px-3 py-2 border-b"
+            style={{ borderColor: "var(--color-paper-dark)" }}
+          >
             <span className="text-sm font-semibold">Notificaciones</span>
             {unreadCount > 0 && (
               <button onClick={handleMarkAll} className="text-xs" style={{ color: "var(--color-accent)" }}>
@@ -113,6 +147,23 @@ export function NotificationBell() {
               </button>
             )}
           </div>
+
+          {pushSubscribed === false && (
+            <div className="px-3 py-2 border-b text-xs" style={{ borderColor: "var(--color-paper-dark)" }}>
+              <button onClick={handleEnablePush} disabled={pushBusy} style={{ color: "var(--color-accent)" }}>
+                {pushBusy ? "Activando..." : "🔔 Activar avisos en este dispositivo"}
+              </button>
+            </div>
+          )}
+          {pushSubscribed === true && (
+            <div
+              className="px-3 py-2 border-b text-xs"
+              style={{ borderColor: "var(--color-paper-dark)", color: "var(--color-ink-soft)" }}
+            >
+              ✓ Avisos activados en este dispositivo
+            </div>
+          )}
+
           <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 && (
               <p className="text-sm text-center py-6" style={{ color: "var(--color-ink-soft)" }}>

@@ -29,5 +29,11 @@ class Settings(BaseSettings):
     OCI_BUCKET_NAME: str = ""
     OCI_PUBLIC_BASE_URL: str = ""
 
+    # Web Push (RFC 8292). Empty by default: push sends are silently
+    # skipped (see app.services.push) so the app still works without them.
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_CLAIMS_EMAIL: str = "admin@example.com"
+
 
 settings = Settings()
