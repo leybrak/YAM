@@ -1,0 +1,197 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from app.api.deps import get_current_linked_user, get_db
+from app.models.entry import Entry
+from app.models.favorite import Favorite
+from app.models.user import User
+from app.schemas.entry import (
+    CommentRead,
+    EntryCommentCreate,
+    EntryCreate,
+    EntryRead,
+    PhotoCreate,
+    PhotoRead,
+)
+from app.services.storage import build_object_key, presigned_upload_url, resolve_read_url
+
+router = APIRouter(prefix="/api/entries", tags=["entries"])
+
+
+def _get_entry_or_404(db: Session, couple_id: uuid.UUID, entry_id: uuid.UUID) -> Entry:
+    entry = db.scalar(
+        select(Entry)
+        .options(selectinload(Entry.comments), selectinload(Entry.photos))
+        .where(Entry.id == entry_id, Entry.couple_id == couple_id)
+    )
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+    return entry
+
+
+def _shape_entry(entry: Entry, user: User, db: Session) -> EntryRead:
+    """Applies the blind-drop rule: the partner's comment and photos stay
+    hidden until the current user has also left their own comment."""
+    unlocked = entry.is_unlocked
+    my_comment = next((c for c in entry.comments if c.user_id == user.id), None)
+    partner_comment = next((c for c in entry.comments if c.user_id != user.id), None)
+    reveal_partner = unlocked or my_comment is not None
+
+    my_photos = [p for p in entry.photos if p.user_id == user.id]
+    partner_photos = [p for p in entry.photos if p.user_id != user.id]
+
+    is_favorite = (
+        db.scalar(
+            select(Favorite).where(Favorite.entry_id == entry.id, Favorite.user_id == user.id)
+        )
+        is not None
+    )
+
+    def to_photo_read(p) -> PhotoRead:
+        return PhotoRead(
+            id=p.id,
+            user_id=p.user_id,
+            url=resolve_read_url(p.storage_key),
+            caption=p.caption,
+            taken_at=p.taken_at,
+            created_at=p.created_at,
+        )
+
+    return EntryRead(
+        id=entry.id,
+        entry_date=entry.entry_date,
+        title=entry.title,
+        location_name=entry.location_name,
+        weather=entry.weather,
+        song=entry.song,
+        created_at=entry.created_at,
+        is_unlocked=unlocked,
+        is_favorite=is_favorite,
+        my_comment=CommentRead.model_validate(my_comment) if my_comment else None,
+        partner_comment=(
+            CommentRead.model_validate(partner_comment)
+            if partner_comment and reveal_partner
+            else None
+        ),
+        my_photos=[to_photo_read(p) for p in my_photos],
+        partner_photos=[to_photo_read(p) for p in partner_photos] if reveal_partner else [],
+    )
+
+
+@router.post("", response_model=EntryRead, status_code=status.HTTP_201_CREATED)
+def create_entry(
+    payload: EntryCreate, user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> EntryRead:
+    entry = Entry(couple_id=user.couple_id, **payload.model_dump())
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.get("", response_model=list[EntryRead])
+def list_entries(
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, le=200),
+    offset: int = 0,
+) -> list[EntryRead]:
+    entries = db.scalars(
+        select(Entry)
+        .options(selectinload(Entry.comments), selectinload(Entry.photos))
+        .where(Entry.couple_id == user.couple_id)
+        .order_by(Entry.entry_date.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return [_shape_entry(e, user, db) for e in entries]
+
+
+@router.get("/{entry_id}", response_model=EntryRead)
+def get_entry(
+    entry_id: uuid.UUID, user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> EntryRead:
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    return _shape_entry(entry, user, db)
+
+
+@router.post("/{entry_id}/comment", response_model=EntryRead)
+def add_comment(
+    entry_id: uuid.UUID,
+    payload: EntryCommentCreate,
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+) -> EntryRead:
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    existing = next((c for c in entry.comments if c.user_id == user.id), None)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Ya dejaste tu comentario para este día"
+        )
+
+    from app.models.comment import EntryComment
+
+    db.add(EntryComment(entry_id=entry.id, user_id=user.id, text=payload.text))
+    db.commit()
+    db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.post("/{entry_id}/photos/presign")
+def presign_photo_upload(
+    entry_id: uuid.UUID,
+    filename: str = Query(...),
+    content_type: str = Query(default="image/jpeg"),
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    _get_entry_or_404(db, user.couple_id, entry_id)
+    object_key = build_object_key(user.couple_id, entry_id, filename)
+    return {
+        "upload_url": presigned_upload_url(object_key, content_type),
+        "storage_key": object_key,
+    }
+
+
+@router.post("/{entry_id}/photos", response_model=EntryRead, status_code=status.HTTP_201_CREATED)
+def register_photo(
+    entry_id: uuid.UUID,
+    payload: PhotoCreate,
+    user: User = Depends(get_current_linked_user),
+    db: Session = Depends(get_db),
+) -> EntryRead:
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+
+    from app.models.photo import EntryPhoto
+
+    db.add(
+        EntryPhoto(
+            entry_id=entry.id,
+            user_id=user.id,
+            storage_key=payload.storage_key,
+            caption=payload.caption,
+            taken_at=payload.taken_at,
+        )
+    )
+    db.commit()
+    db.refresh(entry)
+    return _shape_entry(entry, user, db)
+
+
+@router.put("/{entry_id}/favorite", response_model=EntryRead)
+def toggle_favorite(
+    entry_id: uuid.UUID, user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> EntryRead:
+    entry = _get_entry_or_404(db, user.couple_id, entry_id)
+    existing = db.scalar(
+        select(Favorite).where(Favorite.entry_id == entry.id, Favorite.user_id == user.id)
+    )
+    if existing:
+        db.delete(existing)
+    else:
+        db.add(Favorite(entry_id=entry.id, user_id=user.id))
+    db.commit()
+    return _shape_entry(entry, user, db)
