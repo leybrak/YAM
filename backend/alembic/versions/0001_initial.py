@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    couple_status = postgresql.ENUM("pending", "linked", name="couple_status")
+    couple_status = postgresql.ENUM("pending", "linked", name="couple_status", create_type=False)
     couple_status.create(op.get_bind())
 
     op.create_table(

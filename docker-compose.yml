@@ -6,7 +6,9 @@ services:
       POSTGRES_PASSWORD: yam
       POSTGRES_DB: yam
     ports:
-      - "5432:5432"
+      # Host port 5433: this machine already has a native PostgreSQL service
+      # bound to 5432, so the container is published on 5433 instead.
+      - "5433:5432"
     volumes:
       - yam_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +21,10 @@ services:
     build: ./backend
     env_file:
       - ./backend/.env
+    environment:
+      # Inside the compose network the backend reaches Postgres via the
+      # service name on its container port, regardless of the host mapping.
+      DATABASE_URL: postgresql+psycopg2://yam:yam@db:5432/yam
     ports:
       - "8000:8000"
     depends_on:
