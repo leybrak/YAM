@@ -5,6 +5,7 @@ import { addComment, fetchEntries, toggleFavorite, uploadEntryPhoto } from "../a
 import type { Entry } from "../api/types";
 import { NavBar } from "../components/NavBar";
 import { Polaroid } from "../components/Polaroid";
+import { PhotoCropModal } from "../components/PhotoCropModal";
 
 export function EntryDetailPage() {
   const { entryId } = useParams();
@@ -12,6 +13,7 @@ export function EntryDetailPage() {
   const [entry, setEntry] = useState<Entry | null>(null);
   const [commentText, setCommentText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const revealRef = useRef<HTMLDivElement>(null);
   const wasUnlocked = useRef(false);
 
@@ -54,16 +56,22 @@ export function EntryDetailPage() {
     setCommentText("");
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !entryId) return;
+    if (file) setPendingFile(file);
+    e.target.value = "";
+  }
+
+  async function handleCropConfirm(blob: Blob) {
+    if (!entryId) return;
+    setPendingFile(null);
     setUploading(true);
     try {
-      const updated = await uploadEntryPhoto(entryId, file);
+      const cropped = new File([blob], "foto.jpg", { type: "image/jpeg" });
+      const updated = await uploadEntryPhoto(entryId, cropped);
       setEntry(updated);
     } finally {
       setUploading(false);
-      e.target.value = "";
     }
   }
 
@@ -118,7 +126,7 @@ export function EntryDetailPage() {
               style={{ color: "var(--color-ink-soft)" }}
             >
               {uploading ? "Subiendo..." : "+ Agregar foto"}
-              <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileSelected} />
             </label>
           </div>
         </section>
@@ -181,6 +189,14 @@ export function EntryDetailPage() {
           )}
         </section>
       </div>
+
+      {pendingFile && (
+        <PhotoCropModal
+          file={pendingFile}
+          onCancel={() => setPendingFile(null)}
+          onConfirm={handleCropConfirm}
+        />
+      )}
     </div>
   );
 }

@@ -48,6 +48,25 @@ export interface Entry {
   partner_photos: Photo[];
 }
 
+export type NotificationType = "entry_unlocked";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  entry_id: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface AnniversarySummary {
+  days_together: number;
+  total_entries: number;
+  unlocked_entries: number;
+  total_photos: number;
+  highlight_entries: Entry[];
+}
+
 export interface Capsule {
   id: string;
   created_by_user_id: string;

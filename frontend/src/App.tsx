@@ -6,6 +6,7 @@ import { PairingPage } from "./pages/PairingPage";
 import { AlbumPage } from "./pages/AlbumPage";
 import { EntryDetailPage } from "./pages/EntryDetailPage";
 import { CapsulesPage } from "./pages/CapsulesPage";
+import { SummaryPage } from "./pages/SummaryPage";
 import { ProtectedRoute, RequireCouple } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/album" element={<AlbumPage />} />
             <Route path="/album/:entryId" element={<EntryDetailPage />} />
             <Route path="/capsulas" element={<CapsulesPage />} />
+            <Route path="/resumen" element={<SummaryPage />} />
           </Route>
         </Route>
       </Routes>

@@ -70,11 +70,10 @@ En Hetzner, seteá `STORAGE_BACKEND=oci` y completá las variables `OCI_*` en `.
 - `entry_photos` — fotos subidas por cada integrante para esa entrada (fotos cruzadas)
 - `time_capsules` — mensaje/foto sellado hasta una fecha futura
 - `favorites` — entradas marcadas como favoritas (insumo del resumen de aniversario)
+- `notifications` — avisos in-app por usuario (p. ej. "tu pareja comentó y la entrada se reveló"),
+  entregados por polling desde el frontend
 
 ## Pendiente / próximos pasos
 
-- Modo presentación / resumen de aniversario animado
-- Notificaciones cuando la pareja deja su comentario y se destraba una entrada
-- Subida de fotos con recorte/orientación antes del presign
 - Tests (pytest en backend, Vitest en frontend)
 - CI en GitHub Actions + deploy a Hetzner

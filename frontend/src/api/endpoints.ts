@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Capsule, Couple, Entry, User } from "./types";
+import type { AnniversarySummary, Capsule, Couple, Entry, Notification, User } from "./types";
 
 export async function registerUser(email: string, password: string, display_name: string) {
   const { data } = await api.post<User>("/api/auth/register", { email, password, display_name });
@@ -79,6 +79,30 @@ export async function uploadEntryPhoto(entryId: string, file: File) {
     storage_key: presign.storage_key,
   });
   return entry;
+}
+
+export async function fetchAnniversarySummary() {
+  const { data } = await api.get<AnniversarySummary>("/api/entries/summary/anniversary");
+  return data;
+}
+
+export async function fetchNotifications() {
+  const { data } = await api.get<Notification[]>("/api/notifications");
+  return data;
+}
+
+export async function fetchUnreadNotificationCount() {
+  const { data } = await api.get<{ count: number }>("/api/notifications/unread-count");
+  return data.count;
+}
+
+export async function markNotificationRead(id: string) {
+  const { data } = await api.put<Notification>(`/api/notifications/${id}/read`);
+  return data;
+}
+
+export async function markAllNotificationsRead() {
+  await api.put("/api/notifications/read-all");
 }
 
 export async function fetchCapsules() {

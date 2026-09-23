@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
+import { NotificationBell } from "./NotificationBell";
 
 export function NavBar() {
   const logout = useAuthStore((s) => s.logout);
@@ -22,6 +23,10 @@ export function NavBar() {
         <NavLink to="/capsulas" className={linkClass} style={({ isActive }) => linkStyle(isActive)}>
           Cápsulas
         </NavLink>
+        <NavLink to="/resumen" className={linkClass} style={({ isActive }) => linkStyle(isActive)}>
+          Resumen
+        </NavLink>
+        <NotificationBell />
         <button onClick={logout} className="text-sm ml-2" style={{ color: "var(--color-ink-soft)" }}>
           Salir
         </button>

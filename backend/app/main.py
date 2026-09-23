@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import auth, capsules, couples, entries, uploads
+from app.api.routes import auth, capsules, couples, entries, notifications, uploads
 from app.core.config import settings
 
 app = FastAPI(title="YAM", description="Álbum virtual para dos", version="0.1.0")
@@ -21,6 +21,7 @@ app.include_router(auth.router)
 app.include_router(couples.router)
 app.include_router(entries.router)
 app.include_router(capsules.router)
+app.include_router(notifications.router)
 app.include_router(uploads.router)
 
 if settings.STORAGE_BACKEND == "local":

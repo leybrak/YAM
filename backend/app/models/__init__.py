@@ -3,6 +3,7 @@ from app.models.comment import EntryComment
 from app.models.couple import Couple
 from app.models.entry import Entry
 from app.models.favorite import Favorite
+from app.models.notification import Notification
 from app.models.photo import EntryPhoto
 from app.models.user import User
 
@@ -14,4 +15,5 @@ __all__ = [
     "EntryPhoto",
     "TimeCapsule",
     "Favorite",
+    "Notification",
 ]

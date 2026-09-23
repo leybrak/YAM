@@ -1,10 +1,12 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_linked_user, get_db
+from app.models.couple import Couple
 from app.models.entry import Entry
 from app.models.favorite import Favorite
 from app.models.user import User
@@ -16,6 +18,7 @@ from app.schemas.entry import (
     PhotoCreate,
     PhotoRead,
 )
+from app.schemas.summary import AnniversarySummary
 from app.services.storage import build_object_key, presigned_upload_url, resolve_read_url
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
@@ -110,6 +113,44 @@ def list_entries(
     return [_shape_entry(e, user, db) for e in entries]
 
 
+@router.get("/summary/anniversary", response_model=AnniversarySummary)
+def anniversary_summary(
+    user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
+) -> AnniversarySummary:
+    """Feeds the animated presentation mode: overall stats plus the unlocked
+    entries either partner marked as a favorite, in chronological order."""
+    couple = db.get(Couple, user.couple_id)
+    since = couple.linked_at.date() if couple and couple.linked_at else None
+    days_together = (date.today() - since).days if since else 0
+
+    entries = db.scalars(
+        select(Entry)
+        .options(selectinload(Entry.comments), selectinload(Entry.photos))
+        .where(Entry.couple_id == user.couple_id)
+        .order_by(Entry.entry_date.asc())
+    ).all()
+
+    favorite_entry_ids = set(
+        db.scalars(
+            select(Favorite.entry_id)
+            .join(Entry, Entry.id == Favorite.entry_id)
+            .where(Entry.couple_id == user.couple_id)
+        ).all()
+    )
+
+    total_photos = sum(len(e.photos) for e in entries)
+
+    highlights = [e for e in entries if e.is_unlocked and e.id in favorite_entry_ids]
+
+    return AnniversarySummary(
+        days_together=days_together,
+        total_entries=len(entries),
+        unlocked_entries=sum(1 for e in entries if e.is_unlocked),
+        total_photos=total_photos,
+        highlight_entries=[_shape_entry(e, user, db) for e in highlights],
+    )
+
+
 @router.get("/{entry_id}", response_model=EntryRead)
 def get_entry(
     entry_id: uuid.UUID, user: User = Depends(get_current_linked_user), db: Session = Depends(get_db)
@@ -134,10 +175,39 @@ def add_comment(
 
     from app.models.comment import EntryComment
 
+    was_unlocked = entry.is_unlocked
     db.add(EntryComment(entry_id=entry.id, user_id=user.id, text=payload.text))
     db.commit()
     db.refresh(entry)
+
+    if not was_unlocked and entry.is_unlocked:
+        _notify_entry_unlocked(db, entry, notify_user_id=user.id)
+
     return _shape_entry(entry, user, db)
+
+
+def _notify_entry_unlocked(db: Session, entry: Entry, notify_user_id: uuid.UUID) -> None:
+    """Tells the OTHER partner (the one who was already waiting) that
+    `notify_user_id` just left the comment that unlocked this entry."""
+    from app.models.notification import Notification, NotificationType
+
+    partner = db.scalar(
+        select(User).where(User.couple_id == entry.couple_id, User.id != notify_user_id)
+    )
+    if partner is None:
+        return
+
+    when = entry.title or entry.entry_date.strftime("%d/%m/%Y")
+    db.add(
+        Notification(
+            user_id=partner.id,
+            couple_id=entry.couple_id,
+            entry_id=entry.id,
+            type=NotificationType.ENTRY_UNLOCKED,
+            message=f"Tu pareja dejó su comentario en «{when}» y la entrada se reveló 💌",
+        )
+    )
+    db.commit()
 
 
 @router.post("/{entry_id}/photos/presign")
