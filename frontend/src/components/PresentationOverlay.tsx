@@ -29,6 +29,7 @@ export function PresentationOverlay({
   const [paused, setPaused] = useState(false);
   const slideRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   function goTo(next: number) {
     setIndex((next + slides.length) % slides.length);
@@ -59,6 +60,37 @@ export function PresentationOverlay({
     );
   }, [index]);
 
+  // Soundtrack: softly fades the entry's song in/out with GSAP as slides
+  // change, instead of hard-cutting audio between them.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const slideNow = slides[index];
+    const songUrl = slideNow.kind === "entry" ? slideNow.entry.song_url : null;
+
+    if (!songUrl) {
+      gsap.to(audio, { volume: 0, duration: 0.4, onComplete: () => audio.pause() });
+      return;
+    }
+
+    if (audio.src !== songUrl) {
+      audio.src = songUrl;
+      audio.volume = 0;
+      audio.play().catch(() => {});
+    }
+    gsap.to(audio, { volume: 0.4, duration: 1, ease: "power1.out" });
+
+    return () => {
+      gsap.to(audio, { volume: 0, duration: 0.4 });
+    };
+  }, [index, slides]);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -84,6 +116,8 @@ export function PresentationOverlay({
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
+      <audio ref={audioRef} loop className="hidden" />
+
       <button
         onClick={onClose}
         className="absolute top-5 right-6 text-2xl text-white/80 hover:text-white"

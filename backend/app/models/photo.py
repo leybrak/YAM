@@ -21,3 +21,6 @@ class EntryPhoto(UUIDPKMixin, TimestampMixin, Base):
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     entry: Mapped["Entry"] = relationship("Entry", back_populates="photos")  # noqa: F821
+    stickers: Mapped[list["PhotoSticker"]] = relationship(  # noqa: F821
+        "PhotoSticker", back_populates="photo", cascade="all, delete-orphan"
+    )

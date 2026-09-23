@@ -3,6 +3,9 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.sticker import StickerRead
+from app.schemas.voice_note import VoiceNoteRead
+
 
 class EntryCreate(BaseModel):
     entry_date: date
@@ -10,6 +13,7 @@ class EntryCreate(BaseModel):
     location_name: str | None = Field(default=None, max_length=200)
     weather: str | None = Field(default=None, max_length=100)
     song: str | None = Field(default=None, max_length=200)
+    song_url: str | None = Field(default=None, max_length=500)
 
 
 class EntryCommentCreate(BaseModel):
@@ -32,6 +36,7 @@ class PhotoRead(BaseModel):
     caption: str | None
     taken_at: datetime | None
     created_at: datetime
+    stickers: list[StickerRead] = []
 
 
 class PhotoCreate(BaseModel):
@@ -42,7 +47,9 @@ class PhotoCreate(BaseModel):
 
 class EntryRead(BaseModel):
     """Shapes the blind-drop rule: the partner's comment/photos are withheld
-    until both partners have left their own comment for this entry."""
+    until both partners have left their own comment for this entry.
+    `partner_has_commented` is exposed pre-reveal only as a boolean (never
+    the text itself) so the UI can show a sealed/blurred teaser card."""
 
     id: uuid.UUID
     entry_date: date
@@ -50,10 +57,14 @@ class EntryRead(BaseModel):
     location_name: str | None
     weather: str | None
     song: str | None
+    song_url: str | None
     created_at: datetime
     is_unlocked: bool
     is_favorite: bool
+    partner_has_commented: bool
     my_comment: CommentRead | None
     partner_comment: CommentRead | None
     my_photos: list[PhotoRead]
     partner_photos: list[PhotoRead]
+    my_voice_notes: list[VoiceNoteRead]
+    partner_voice_notes: list[VoiceNoteRead]

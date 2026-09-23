@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { createCapsule, fetchCapsules, openCapsule } from "../api/endpoints";
+import { createCapsule, fetchCapsules } from "../api/endpoints";
 import type { Capsule } from "../api/types";
 import { NavBar } from "../components/NavBar";
-import { CountdownTimer } from "../components/CountdownTimer";
+import { SealedCapsule } from "../components/SealedCapsule";
 
 export function CapsulesPage() {
   const [capsules, setCapsules] = useState<Capsule[]>([]);
@@ -29,9 +29,8 @@ export function CapsulesPage() {
     setUnlockDate("");
   }
 
-  async function handleOpen(id: string) {
-    const updated = await openCapsule(id);
-    setCapsules((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  function handleOpened(updated: Capsule) {
+    setCapsules((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
   }
 
   return (
@@ -82,32 +81,9 @@ export function CapsulesPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {capsules.map((c) => (
-            <div key={c.id} className="polaroid">
-              <p className="font-semibold mb-1" style={{ fontFamily: "var(--font-hand)" }}>
-                {c.title}
-              </p>
-              {c.is_open ? (
-                <>
-                  <p className="text-xs mb-2" style={{ color: "var(--color-ink-soft)" }}>
-                    Se abrió el {new Date(c.unlock_date).toLocaleDateString("es-AR")}
-                  </p>
-                  {c.content_text && <p>{c.content_text}</p>}
-                  {!c.content_text && (
-                    <button
-                      onClick={() => handleOpen(c.id)}
-                      className="px-4 py-1 rounded-full text-white text-sm"
-                      style={{ background: "var(--color-accent)" }}
-                    >
-                      Abrir
-                    </button>
-                  )}
-                </>
-              ) : (
-                <CountdownTimer unlockDate={c.unlock_date} />
-              )}
-            </div>
+            <SealedCapsule key={c.id} capsule={c} onOpened={handleOpened} />
           ))}
         </div>
 

@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { gsap } from "gsap";
-import { addComment, fetchEntries, toggleFavorite, uploadEntryPhoto } from "../api/endpoints";
-import type { Entry } from "../api/types";
+import {
+  addComment,
+  addSticker,
+  fetchEntries,
+  removeSticker,
+  toggleFavorite,
+  uploadEntryPhoto,
+  uploadVoiceNote,
+} from "../api/endpoints";
+import type { Entry, StickerType } from "../api/types";
 import { NavBar } from "../components/NavBar";
 import { Polaroid } from "../components/Polaroid";
 import { PhotoCropModal } from "../components/PhotoCropModal";
+import { StickerBar } from "../components/StickerBar";
+import { VoiceRecorder } from "../components/VoiceRecorder";
 
 export function EntryDetailPage() {
   const { entryId } = useParams();
@@ -14,6 +24,8 @@ export function EntryDetailPage() {
   const [commentText, setCommentText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [armedSticker, setArmedSticker] = useState<StickerType | null>(null);
+  const [recordingUpload, setRecordingUpload] = useState(false);
   const revealRef = useRef<HTMLDivElement>(null);
   const wasUnlocked = useRef(false);
 
@@ -49,6 +61,9 @@ export function EntryDetailPage() {
     );
   }
 
+  const dateLabel = new Date(entry.entry_date).toLocaleDateString("es-AR");
+  const photoCaptionFallback = entry.location_name || dateLabel;
+
   async function handleComment() {
     if (!entryId || !commentText.trim()) return;
     const updated = await addComment(entryId, commentText.trim());
@@ -81,6 +96,30 @@ export function EntryDetailPage() {
     setEntry(updated);
   }
 
+  async function handlePlaceSticker(photoId: string, x: number, y: number) {
+    if (!entryId || !armedSticker) return;
+    const rotation = Math.random() * 30 - 15;
+    const updated = await addSticker(entryId, photoId, { sticker_type: armedSticker, x, y, rotation });
+    setEntry(updated);
+  }
+
+  async function handleRemoveSticker(photoId: string, stickerId: string) {
+    if (!entryId) return;
+    const updated = await removeSticker(entryId, photoId, stickerId);
+    setEntry(updated);
+  }
+
+  async function handleVoiceRecorded(blob: Blob, seconds: number) {
+    if (!entryId) return;
+    setRecordingUpload(true);
+    try {
+      const updated = await uploadVoiceNote(entryId, blob, seconds);
+      setEntry(updated);
+    } finally {
+      setRecordingUpload(false);
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <NavBar />
@@ -95,7 +134,7 @@ export function EntryDetailPage() {
 
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-3xl" style={{ fontFamily: "var(--font-hand)" }}>
-            {entry.title || new Date(entry.entry_date).toLocaleDateString("es-AR")}
+            {entry.title || dateLabel}
           </h1>
           <button onClick={handleFavorite} className="text-2xl">
             {entry.is_favorite ? "★" : "☆"}
@@ -113,13 +152,22 @@ export function EntryDetailPage() {
           {entry.song && ` · 🎵 ${entry.song}`}
         </p>
 
+        <StickerBar armed={armedSticker} onArm={setArmedSticker} />
+
         <section className="mb-8">
           <h2 className="text-lg mb-2" style={{ fontFamily: "var(--font-hand)" }}>
             Tus fotos de ese día
           </h2>
           <div className="flex flex-wrap gap-4">
-            {entry.my_photos.map((p, i) => (
-              <Polaroid key={p.id} photo={p} rotate={i % 2 === 0 ? -3 : 3} />
+            {entry.my_photos.map((p) => (
+              <Polaroid
+                key={p.id}
+                photo={p}
+                captionFallback={photoCaptionFallback}
+                armedSticker={armedSticker}
+                onPlaceSticker={(x, y) => handlePlaceSticker(p.id, x, y)}
+                onRemoveSticker={(stickerId) => handleRemoveSticker(p.id, stickerId)}
+              />
             ))}
             <label
               className="polaroid w-40 h-40 flex items-center justify-center cursor-pointer text-sm text-center"
@@ -129,6 +177,22 @@ export function EntryDetailPage() {
               <input type="file" accept="image/*" className="hidden" onChange={handleFileSelected} />
             </label>
           </div>
+
+          <div className="mt-4 flex items-center gap-3">
+            <VoiceRecorder onRecorded={handleVoiceRecorded} />
+            {recordingUpload && (
+              <span className="text-xs" style={{ color: "var(--color-ink-soft)" }}>
+                Subiendo nota de voz...
+              </span>
+            )}
+          </div>
+          {entry.my_voice_notes.length > 0 && (
+            <div className="flex flex-col gap-2 mt-3">
+              {entry.my_voice_notes.map((v) => (
+                <audio key={v.id} src={v.url} controls className="h-8 max-w-xs" />
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="mb-8">
@@ -163,16 +227,39 @@ export function EntryDetailPage() {
           <h2 className="text-lg mb-2" style={{ fontFamily: "var(--font-hand)" }}>
             Lo de tu pareja
           </h2>
+
           {!entry.is_unlocked && !entry.my_comment && (
-            <p style={{ color: "var(--color-ink-soft)" }}>
-              Se revela apenas dejes tu propio recuerdo.
-            </p>
+            <>
+              {entry.partner_has_commented ? (
+                <div className="relative inline-block max-w-md">
+                  <div
+                    className="polaroid select-none"
+                    style={{ filter: "blur(8px)", fontFamily: "var(--font-hand)" }}
+                    aria-hidden="true"
+                  >
+                    Un recuerdo especial te está esperando acá, escrito con cariño hace un rato...
+                  </div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-center px-4">
+                    <span className="text-3xl">🔒</span>
+                    <p className="text-sm font-medium">
+                      Escribí lo que más te gustó hoy para descubrir qué puso tu pareja
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ color: "var(--color-ink-soft)" }}>
+                  Se revela apenas dejes tu propio recuerdo.
+                </p>
+              )}
+            </>
           )}
+
           {!entry.is_unlocked && entry.my_comment && (
             <p className="animate-pulse" style={{ color: "var(--color-ink-soft)" }}>
               🔒 Esperando a que tu pareja también cuente el suyo...
             </p>
           )}
+
           {entry.is_unlocked && (
             <div ref={revealRef} className="flex flex-col gap-4">
               {entry.partner_comment && (
@@ -181,10 +268,24 @@ export function EntryDetailPage() {
                 </p>
               )}
               <div className="flex flex-wrap gap-4">
-                {entry.partner_photos.map((p, i) => (
-                  <Polaroid key={p.id} photo={p} rotate={i % 2 === 0 ? 3 : -3} />
+                {entry.partner_photos.map((p) => (
+                  <Polaroid
+                    key={p.id}
+                    photo={p}
+                    captionFallback={photoCaptionFallback}
+                    armedSticker={armedSticker}
+                    onPlaceSticker={(x, y) => handlePlaceSticker(p.id, x, y)}
+                    onRemoveSticker={(stickerId) => handleRemoveSticker(p.id, stickerId)}
+                  />
                 ))}
               </div>
+              {entry.partner_voice_notes.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {entry.partner_voice_notes.map((v) => (
+                    <audio key={v.id} src={v.url} controls className="h-8 max-w-xs" />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>

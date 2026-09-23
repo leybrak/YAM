@@ -23,6 +23,7 @@ def _shape(capsule: TimeCapsule) -> CapsuleRead:
         title=capsule.title,
         created_at=capsule.created_at,
         is_open=is_open,
+        opened_at=capsule.opened_at,
         content_text=capsule.content_text if is_open else None,
         photo_url=resolve_read_url(capsule.storage_key) if is_open and capsule.storage_key else None,
     )

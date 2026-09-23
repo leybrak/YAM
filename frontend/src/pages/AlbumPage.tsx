@@ -10,6 +10,7 @@ export function AlbumPage() {
   const [showForm, setShowForm] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [title, setTitle] = useState("");
+  const [songUrl, setSongUrl] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,10 +28,15 @@ export function AlbumPage() {
   }, [entries]);
 
   async function handleCreate() {
-    const entry = await createEntry({ entry_date: date, title: title || undefined });
+    const entry = await createEntry({
+      entry_date: date,
+      title: title || undefined,
+      song_url: songUrl.trim() || undefined,
+    });
     setEntries((prev) => [entry, ...prev]);
     setShowForm(false);
     setTitle("");
+    setSongUrl("");
   }
 
   return (
@@ -62,6 +68,12 @@ export function AlbumPage() {
               placeholder="Título (opcional)"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              className="border rounded px-3 py-2"
+            />
+            <input
+              placeholder="🎵 Enlace de canción (opcional)"
+              value={songUrl}
+              onChange={(e) => setSongUrl(e.target.value)}
               className="border rounded px-3 py-2"
             />
             <button

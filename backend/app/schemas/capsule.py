@@ -18,6 +18,9 @@ class CapsuleRead(BaseModel):
     title: str
     created_at: datetime
     is_open: bool
+    # Set once someone has actually broken the seal (vs. just is_open being
+    # true), so the frontend only plays the seal-break animation once.
+    opened_at: datetime | None = None
     # Only populated once is_open is true
     content_text: str | None = None
     photo_url: str | None = None

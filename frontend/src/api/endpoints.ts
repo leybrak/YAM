@@ -1,5 +1,13 @@
 import { api } from "./client";
-import type { AnniversarySummary, Capsule, Couple, Entry, Notification, User } from "./types";
+import type {
+  AnniversarySummary,
+  Capsule,
+  Couple,
+  Entry,
+  Notification,
+  StickerType,
+  User,
+} from "./types";
 
 export async function registerUser(email: string, password: string, display_name: string) {
   const { data } = await api.post<User>("/api/auth/register", { email, password, display_name });
@@ -49,6 +57,7 @@ export async function createEntry(payload: {
   location_name?: string;
   weather?: string;
   song?: string;
+  song_url?: string;
 }) {
   const { data } = await api.post<Entry>("/api/entries", payload);
   return data;
@@ -77,6 +86,41 @@ export async function uploadEntryPhoto(entryId: string, file: File) {
   });
   const { data: entry } = await api.post<Entry>(`/api/entries/${entryId}/photos`, {
     storage_key: presign.storage_key,
+  });
+  return entry;
+}
+
+export async function addSticker(
+  entryId: string,
+  photoId: string,
+  sticker: { sticker_type: StickerType; x: number; y: number; rotation?: number }
+) {
+  const { data } = await api.post<Entry>(
+    `/api/entries/${entryId}/photos/${photoId}/stickers`,
+    sticker
+  );
+  return data;
+}
+
+export async function removeSticker(entryId: string, photoId: string, stickerId: string) {
+  const { data } = await api.delete<Entry>(
+    `/api/entries/${entryId}/photos/${photoId}/stickers/${stickerId}`
+  );
+  return data;
+}
+
+export async function uploadVoiceNote(entryId: string, blob: Blob, durationSeconds: number) {
+  const { data: presign } = await api.post<{ upload_url: string; storage_key: string }>(
+    `/api/entries/${entryId}/voice-notes/presign`
+  );
+  await fetch(presign.upload_url, {
+    method: "PUT",
+    headers: { "Content-Type": "audio/webm" },
+    body: blob,
+  });
+  const { data: entry } = await api.post<Entry>(`/api/entries/${entryId}/voice-notes`, {
+    storage_key: presign.storage_key,
+    duration_seconds: Math.max(1, Math.round(durationSeconds)),
   });
   return entry;
 }
