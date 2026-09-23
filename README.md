@@ -7,8 +7,11 @@ tiempo con cuenta regresiva, y una estética de scrapbook animada con GSAP.
 ## Stack
 
 - **Backend**: Python (FastAPI) + PostgreSQL (SQLAlchemy + Alembic) + JWT auth
-- **Storage**: OCI Object Storage vía API S3-compatible (subida directa desde el navegador
-  con URLs prefirmadas — el backend en Hetzner nunca proxea los bytes de las imágenes)
+- **Storage**: intercambiable por `STORAGE_BACKEND` en `.env` — `local` (default) guarda
+  las fotos en disco y las sirve desde el propio backend, sin necesitar cuenta de OCI;
+  `oci` sube directo a OCI Object Storage vía API S3-compatible con URLs prefirmadas (lo
+  que usa producción en Hetzner). El frontend no distingue entre los dos: siempre pide una
+  URL de subida y hace `PUT` ahí.
 - **Frontend**: React + Vite + TypeScript + Tailwind v4 + GSAP + Zustand
 
 ## Estructura
@@ -34,7 +37,7 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
-copy .env.example .env      # y completar SECRET_KEY + credenciales de OCI
+copy .env.example .env      # STORAGE_BACKEND=local ya viene por defecto
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
@@ -51,6 +54,11 @@ npm run dev
 ```
 
 La app queda en `http://localhost:5173`.
+
+### Storage en producción
+
+En Hetzner, seteá `STORAGE_BACKEND=oci` y completá las variables `OCI_*` en `.env`
+(ver comentarios en `.env.example`). No hace falta tocar código ni el frontend.
 
 ## Modelo de datos (resumen)
 

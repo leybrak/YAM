@@ -1,10 +1,10 @@
-"""Object storage on OCI, via its S3-compatible API.
-
-The app server (Hetzner) never proxies image bytes: the frontend asks this
-service for a short-lived presigned PUT URL, uploads the file straight to
-OCI, and stores the resulting object key. Reads go through a presigned GET
-unless OCI_PUBLIC_BASE_URL is set (e.g. a bucket fronted by a CDN), in which
-case we just build the public URL directly.
+"""Photo storage, swappable between a local disk backend (dev) and OCI
+Object Storage via its S3-compatible API (prod), picked by
+settings.STORAGE_BACKEND. Either way the app server never proxies image
+bytes through itself: the frontend asks this module for a short-lived
+upload URL, PUTs the file straight there, and stores the resulting object
+key. The frontend code is identical in both cases — it just PUTs to
+whatever URL it's given.
 """
 
 import uuid
@@ -17,7 +17,7 @@ from app.core.config import settings
 _client = None
 
 
-def get_client():
+def _get_oci_client():
     global _client
     if _client is None:
         _client = boto3.client(
@@ -37,7 +37,10 @@ def build_object_key(couple_id: uuid.UUID, entry_id: uuid.UUID, filename: str) -
 
 
 def presigned_upload_url(object_key: str, content_type: str, expires_in: int = 900) -> str:
-    return get_client().generate_presigned_url(
+    if settings.STORAGE_BACKEND == "local":
+        return f"{settings.PUBLIC_BASE_URL.rstrip('/')}/api/uploads/{object_key}"
+
+    return _get_oci_client().generate_presigned_url(
         "put_object",
         Params={
             "Bucket": settings.OCI_BUCKET_NAME,
@@ -49,9 +52,12 @@ def presigned_upload_url(object_key: str, content_type: str, expires_in: int = 9
 
 
 def resolve_read_url(object_key: str, expires_in: int = 3600) -> str:
+    if settings.STORAGE_BACKEND == "local":
+        return f"{settings.PUBLIC_BASE_URL.rstrip('/')}/media/{object_key}"
+
     if settings.OCI_PUBLIC_BASE_URL:
         return f"{settings.OCI_PUBLIC_BASE_URL.rstrip('/')}/{object_key}"
-    return get_client().generate_presigned_url(
+    return _get_oci_client().generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.OCI_BUCKET_NAME, "Key": object_key},
         ExpiresIn=expires_in,
